@@ -51,6 +51,7 @@ Import and Install neccesary Dependencies.
 Run the Application:  python app.py
 
 Upload the Job Description and Resume You wish to score.
+![image](https://github.com/user-attachments/assets/686a3a74-236e-4416-8b2e-24c1a03fcdfb)
 
 This will process the resume in the ResumeScreener.py and output scores based on the predefined criteria.
 
