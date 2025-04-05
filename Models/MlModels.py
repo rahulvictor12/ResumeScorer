@@ -1,26 +1,27 @@
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # Importing sklearn Modules for training Random Forest Regressor
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+# from sklearn.metrics.pairwise import cosine_similarity
+# from sklearn.ensemble import RandomForestRegressor
+# from sklearn.model_selection import train_test_split
+# from sklearn.metrics import mean_squared_error
 
 
 class MlModels:
-    def normalize_cosine_similarity(self, cosine_sim):
-        """
-        Normalize the cosine similarity value to fall between 0 and 1.
-        Args:
-            cosine_sim: raw cosine similarity value
-        Returns:
-            Normalized cosine similarity
-        """
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        return scaler.fit_transform(np.array(cosine_sim).reshape(-1, 1))[0][0]
+
+    def calculate_matching_score(self, resume_text_input, jd_text_input, model):
+        # Generate embeddings
+        # word_weights_new = model.load_TfIdfVectorizer(resume_tokens_new, jd_tokens_new)
+        resume_embed_new = self.get_weighted_embeddings_from_sbert(resume_text_input, model)
+        jd_embed_new = self.get_weighted_embeddings_from_sbert(jd_text_input, model)
+
+        # Compute cosine similarity and convert to percentage
+        matching_score = util.cos_sim(jd_embed_new, resume_embed_new).item()
+        matching_percentage = matching_score * 100  # Convert to percentage
+        return matching_percentage
 
     def load_sbert_model(self):
         sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -49,8 +50,8 @@ class MlModels:
         vectorizer = TfidfVectorizer(
         ngram_range=(1, 3),
         max_features=10000,
-        min_df=1,
-        max_df=0.85,
+        min_df = 1,
+        max_df = 0.85,
         tokenizer=lambda x: x.split(),
         preprocessor = None,
         lowercase = False
@@ -64,32 +65,40 @@ class MlModels:
         word_weights = {word: idf for word, idf in zip(feature_names, idf_values)}
         return word_weights
 
-    def get_weighted_embeddings_from_sbert(self, tokens, word_weights, sbert_model=None):
-        word_embeddings = []
-        weights = []
+    def get_weighted_embeddings_from_sbert(self, text, word_weights = None, sbert_model=None):
+        # word_embeddings = []
+        # weights = []
 
         if sbert_model is None:
             sbert_model = self.load_sbert_model()
 
+        embedding = sbert_model.encode([text], show_progress_bar = False)[0]
+        '''
         for token in tokens:
             token_embedding = sbert_model.encode([token], show_progress_bar = False)[0]
             word_embeddings.append(token_embedding)
 
-            weight = word_weights.get(token.lower(), np.median(list(word_weights.values())))
-            weights.append(weight)
+            if word_weights is not None:
+                weight = word_weights.get(token.lower(), np.median(list(word_weights.values())))
+                weights.append(weight)
 
         # Convert to numpy arrays
         word_embeddings = np.array(word_embeddings)
-        weights = np.array(weights)
+        if word_weights is not None:
+            weights = np.array(weights)
 
-        # Normalize weights
-        weights = weights / np.sum(weights)
+            # Normalize weights
+            weights = weights / np.sum(weights)
 
-        # Calculate weighted average
-        weighted_embedding = np.sum(word_embeddings * weights.reshape(-1, 1), axis=0)
+            # Calculate weighted average
+            weighted_embedding = np.sum(word_embeddings * weights.reshape(-1, 1), axis=0)
 
-        return weighted_embedding
+        else:
+            weighted_embedding = word_embeddings
+        '''
+        return embedding
 
+    '''
     def train_scoring_model(self, resume_embeddings, jd_embeddings, scores = None):
         """
         Train a scoring model using embeddings with sklearn's cosine_similarity
@@ -161,24 +170,22 @@ class MlModels:
 
         return rf
 
-    def predict_score(self, resume_embeddings, jd_embeddings, rf_model):
-        # rf_model = self.train_scoring_model(resume_embeddings, jd_embeddings)
-        # Apply StandardScaler to the embeddings (normalize features)
-        scaler = StandardScaler()
-
-        resume_embeddings_scaled = scaler.transform(resume_embeddings)
-        jd_embeddings_scaled = scaler.transform(jd_embeddings)
-
-        # Create features
-        # cosine_sim = np.dot(resume_embeddings, jd_embeddings) / (np.linalg.norm(resume_embeddings) * np.linalg.norm(jd_embeddings))
-        cosine_sim = cosine_similarity(resume_embeddings_scaled, jd_embeddings_scaled)[0][0]
-
-        # Normalize cosine similarity
-        cosine_sim = self.normalize_cosine_similarity(cosine_sim)
-
+    def predict_score(self, resume_embeddings, jd_embeddings):
+        cosine_sim = cosine_similarity(resume_embeddings.reshape(1, -1), jd_embeddings.reshape(1, -1))[0][0]
         euclidean_dist = np.linalg.norm(resume_embeddings - jd_embeddings)
         skill_overlap = np.sum(resume_embeddings * jd_embeddings)
 
-        print(rf_model.feature_importances_)
         print(f'Cosine Sim: {cosine_sim}, Euclidian Distance: {euclidean_dist}, Skill Overlap: {skill_overlap}')
-        return rf_model.predict([[cosine_sim, euclidean_dist, skill_overlap]])[0]
+        return cosine_sim * 100
+    
+    def normalize_cosine_similarity(self, cosine_sim):
+        """
+        Normalize the cosine similarity value to fall between 0 and 1.
+        Args:
+            cosine_sim: raw cosine similarity value
+        Returns:
+            Normalized cosine similarity
+        """
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        return scaler.fit_transform(np.array(cosine_sim).reshape(-1, 1))[0][0]
+    '''
